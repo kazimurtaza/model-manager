@@ -57,4 +57,4 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: kazimurtaza/model-manager
           short-description: Web service for downloading and managing Hugging Face models with NFS storage
-          readme: DOCKERHUB_README.md
+          readme-filepath: DOCKERHUB_README.md
