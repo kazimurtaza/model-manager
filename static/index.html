@@ -285,11 +285,19 @@
         const modelsList = document.getElementById('modelsList');
 
         let activeDownloads = new Map();
+        let fallbackPolling = null;
 
         loadModels();
         loadDownloads();
-        setInterval(loadModels, 10000);
-        setInterval(loadDownloads, 2000);
+
+        function enableFallbackPolling() {
+            if (!fallbackPolling) {
+                fallbackPolling = setInterval(() => {
+                    loadModels();
+                    loadDownloads();
+                }, 30000);  // 30 seconds as fallback
+            }
+        }
 
         downloadForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -346,6 +354,16 @@
 
         function startEventStream(downloadId) {
             const eventSource = new EventSource(`${API_BASE}/events?download_id=${downloadId}`);
+            let sseWorking = false;
+
+            // Disable fallback polling when SSE connects
+            eventSource.addEventListener('open', () => {
+                sseWorking = true;
+                if (fallbackPolling) {
+                    clearInterval(fallbackPolling);
+                    fallbackPolling = null;
+                }
+            });
 
             eventSource.addEventListener('message', (e) => {
                 const data = JSON.parse(e.data);
@@ -366,6 +384,7 @@
 
             eventSource.addEventListener('error', () => {
                 eventSource.close();
+                enableFallbackPolling();  // Enable polling on SSE failure
             });
         }
 
@@ -390,6 +409,24 @@
                     return;
                 }
                 updateDownloadStatus(downloadId, { status: 'cancelled' });
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function retryDownload(downloadId) {
+            try {
+                const response = await fetch(`${API_BASE}/downloads/${downloadId}/retry`, {
+                    method: 'POST'
+                });
+                if (!response.ok) {
+                    alert('FAILED TO RETRY');
+                    return;
+                }
+                const data = await response.json();
+                document.getElementById(`download-${downloadId}`)?.remove();
+                activeDownloads.delete(downloadId);
+                addDownloadItem(data);
             } catch (error) {
                 alert(`ERROR: ${error.message}`);
             }
@@ -522,11 +559,17 @@
             const item = document.createElement('div');
             item.className = 'download-item';
             item.id = `download-${download.id}`;
+
+            const showRetry = download.status === 'failed' || download.status === 'cancelled';
+            const retryBtn = showRetry ?
+                `<button class="btn btn-small" onclick="retryDownload('${download.id}')">RETRY</button>` : '';
+
             item.innerHTML = `
                 <div class="download-header">
                     <div class="download-name">${download.model_id}${download.filename ? ' / ' + download.filename : ''}</div>
                     <div class="download-actions">
                         <span class="download-status ${download.status}">${download.status.toUpperCase()}</span>
+                        ${retryBtn}
                         <button class="btn btn-small" onclick="clearCache('${download.id}')">CACHE</button>
                         <button class="btn btn-small" onclick="deleteDownload('${download.id}')">REMOVE</button>
                     </div>

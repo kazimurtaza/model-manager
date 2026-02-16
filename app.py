@@ -7,9 +7,12 @@ import uuid
 import threading
 import queue
 import time
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional
+from concurrent.futures import ThreadPoolExecutor
+import atexit
 
 from flask import Flask, request, jsonify, Response, stream_with_context
 from huggingface_hub import HfApi, hf_hub_download, snapshot_download
@@ -22,6 +25,7 @@ app = Flask(__name__)
 MODELS_PATH = os.environ.get("MODELS_PATH", "/models")
 DATA_PATH = os.environ.get("DATA_PATH", "/app/data")
 QUEUE_FILE = Path(DATA_PATH) / "download_queue.json"
+MAX_DOWNLOAD_WORKERS = int(os.environ.get("MAX_DOWNLOAD_WORKERS", "3"))
 
 # Initialize scanner
 scanner = ModelScanner(MODELS_PATH)
@@ -31,16 +35,74 @@ downloads: Dict[str, Dict] = {}
 download_events: Dict[str, queue.Queue] = {}
 download_lock = threading.Lock()
 
+# Thread pool for download workers
+download_executor = ThreadPoolExecutor(
+    max_workers=MAX_DOWNLOAD_WORKERS,
+    thread_name_prefix="download_worker"
+)
+
 # Simple in-memory rate limiter
 download_requests = {}
 RATE_LIMIT = 10  # requests per minute
 
+# Periodic queue save
+queue_save_timer = None
+queue_save_lock = threading.Lock()
+QUEUE_SAVE_INTERVAL = int(os.environ.get("QUEUE_SAVE_INTERVAL", "30"))
+
 
 def save_queue():
-    """Save download queue to file."""
-    QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(QUEUE_FILE, "w") as f:
-        json.dump(downloads, f, indent=2, default=str)
+    """Save download queue to file with atomic write."""
+    try:
+        QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+        with download_lock:
+            # Filter out non-serializable objects
+            queue_snapshot = {}
+            for dl_id, dl_info in downloads.items():
+                dl_copy = {}
+                for k, v in dl_info.items():
+                    if k not in ["future", "subscribers", "stop_progress"]:
+                        try:
+                            json.dumps(v, default=str)  # Test if serializable
+                            dl_copy[k] = v
+                        except (TypeError, ValueError):
+                            dl_copy[k] = str(v) if v is not None else None
+                queue_snapshot[dl_id] = dl_copy
+
+        temp_file = QUEUE_FILE.with_suffix('.tmp')
+        with open(temp_file, "w") as f:
+            json.dump(queue_snapshot, f, indent=2, default=str)
+
+        temp_file.replace(QUEUE_FILE)
+        logging.info(f"Saved queue with {len(queue_snapshot)} downloads")
+    except Exception as e:
+        logging.error(f"Failed to save queue: {e}")
+
+
+def periodic_queue_save():
+    """Periodically save the queue state."""
+    global queue_save_timer
+    logging.info("Periodic queue save triggered")
+    try:
+        save_queue()
+    except Exception as e:
+        logging.error(f"Failed to save queue: {e}")
+
+    with queue_save_lock:
+        queue_save_timer = threading.Timer(QUEUE_SAVE_INTERVAL, periodic_queue_save)
+        queue_save_timer.daemon = True
+        queue_save_timer.start()
+
+
+def start_periodic_save():
+    """Start the periodic save timer."""
+    global queue_save_timer
+    with queue_save_lock:
+        if queue_save_timer is None or not queue_save_timer.is_alive():
+            queue_save_timer = threading.Timer(QUEUE_SAVE_INTERVAL, periodic_queue_save)
+            queue_save_timer.daemon = True
+            queue_save_timer.start()
 
 
 def load_queue():
@@ -90,13 +152,23 @@ def download_worker(download_id: str, model_id: str, model_type: str, filename: 
             })
 
         with download_lock:
+            downloads[download_id]["stop_progress"] = threading.Event()
             downloads[download_id]["status"] = "downloading"
             downloads[download_id]["expected_size"] = expected_size
 
         # Progress tracking function
         def send_progress_updates():
             """Send periodic progress updates while downloading."""
-            while download_id in downloads and downloads[download_id]["status"] == "downloading":
+            while True:
+                # Thread-safe status check WITH lock
+                with download_lock:
+                    if download_id not in downloads:
+                        break
+                    status = downloads[download_id].get("status")
+                    stop_event = downloads[download_id].get("stop_progress")
+
+                if status != "downloading" or (stop_event and stop_event.is_set()):
+                    break
                 try:
                     # Calculate current size
                     current_size = 0
@@ -149,10 +221,15 @@ def download_worker(download_id: str, model_id: str, model_type: str, filename: 
         # Wait for download thread to finish
         progress_thread.join(timeout=3600)  # Max 1 hour
 
-        # Send completed event
+        # Update status to completed FIRST
         with download_lock:
             downloads[download_id]["status"] = "completed"
             downloads[download_id]["end_time"] = datetime.now().isoformat()
+            if "stop_progress" in downloads[download_id]:
+                downloads[download_id]["stop_progress"].set()
+
+        # Then wait for progress thread (short timeout)
+        progress_thread.join(timeout=5)
 
         if download_id in download_events:
             download_events[download_id].put({"type": "completed"})
@@ -160,6 +237,8 @@ def download_worker(download_id: str, model_id: str, model_type: str, filename: 
     except Exception as e:
         # Send failed event
         with download_lock:
+            downloads[download_id]["stop_progress"] = threading.Event()
+            downloads[download_id]["stop_progress"].set()
             downloads[download_id]["status"] = "failed"
             downloads[download_id]["error"] = str(e)
             downloads[download_id]["end_time"] = datetime.now().isoformat()
@@ -226,6 +305,12 @@ def start_download():
         if ".." in filename or "/" in filename:
             return jsonify({"error": "Invalid filename"}), 400
 
+    # Check capacity BEFORE creating download
+    with download_lock:
+        active_count = sum(1 for dl in downloads.values() if dl.get("status") in ["queued", "downloading"])
+        if active_count >= MAX_DOWNLOAD_WORKERS:
+            return jsonify({"error": f"Too many downloads queued (max {MAX_DOWNLOAD_WORKERS})"}), 429
+
     # Create download record
     download_id = str(uuid.uuid4())
 
@@ -246,13 +331,14 @@ def start_download():
 
     save_queue()
 
-    # Start download in background thread
-    thread = threading.Thread(
-        target=download_worker,
-        args=(download_id, model_id, model_type, filename, expected_size),
-        daemon=True
+    # Submit to thread pool instead of creating thread
+    future = download_executor.submit(
+        download_worker,
+        download_id, model_id, model_type, filename, expected_size
     )
-    thread.start()
+
+    with download_lock:
+        downloads[download_id]["future"] = future
 
     return jsonify({
         "download_id": download_id,
@@ -274,7 +360,16 @@ def list_models():
 def list_downloads():
     """List all active downloads."""
     with download_lock:
-        return jsonify({"downloads": list(downloads.values())})
+        # Create a copy without non-serializable objects
+        downloads_list = []
+        for dl_id, dl_info in downloads.items():
+            dl_copy = dl_info.copy()
+            # Remove non-serializable objects
+            dl_copy.pop("future", None)
+            dl_copy.pop("subscribers", None)
+            dl_copy.pop("stop_progress", None)
+            downloads_list.append(dl_copy)
+        return jsonify({"downloads": downloads_list})
 
 
 @app.route("/models/<model_id>", methods=["DELETE"])
@@ -309,6 +404,58 @@ def cancel_download(download_id: str):
         download_events[download_id].put({"type": "cancelled"})
 
     return jsonify({"status": "cancelled"})
+
+
+@app.route("/downloads/<download_id>/retry", methods=["POST"])
+def retry_download(download_id: str):
+    """Retry a failed download."""
+    if download_id not in downloads:
+        return jsonify({"error": "Download not found"}), 404
+
+    with download_lock:
+        dl_info = downloads[download_id]
+        if dl_info["status"] not in ["failed", "cancelled"]:
+            return jsonify({"error": "Can only retry failed downloads"}), 400
+
+        model_id = dl_info["model_id"]
+        model_type = dl_info["model_type"]
+        filename = dl_info.get("filename")
+        expected_size = dl_info.get("expected_size", 0)
+
+    # Create new download with same parameters
+    new_download_id = str(uuid.uuid4())
+
+    with download_lock:
+        downloads[new_download_id] = {
+            "id": new_download_id,
+            "model_id": model_id,
+            "model_type": model_type,
+            "status": "queued",
+            "created_at": datetime.now().isoformat(),
+            "total_bytes": 0,
+            "downloaded_bytes": 0
+        }
+        if filename:
+            downloads[new_download_id]["filename"] = filename
+        download_events[new_download_id] = queue.Queue(maxsize=100)
+
+    save_queue()
+
+    future = download_executor.submit(
+        download_worker,
+        new_download_id, model_id, model_type, filename, expected_size
+    )
+
+    with download_lock:
+        downloads[new_download_id]["future"] = future
+
+    return jsonify({
+        "download_id": new_download_id,
+        "status": "queued",
+        "model_id": model_id,
+        "model_type": model_type,
+        "filename": filename
+    }), 202
 
 
 @app.route("/downloads/<download_id>", methods=["DELETE"])
@@ -405,55 +552,28 @@ def scan_repo():
     model_id = data["model_id"]
 
     # Basic validation
-    if ".." in model_id or "/" == model_id[0]:
+    if ".." in model_id or model_id.startswith("/"):
         return jsonify({"error": "Invalid model_id"}), 400
 
     try:
-        import requests
-
-        # Use HuggingFace REST API to list repo files with sizes
-        api_url = f"https://huggingface.co/api/models/{model_id}/tree/main"
-        response = requests.get(api_url, timeout=10)
-
-        if response.status_code != 200:
-            return jsonify({"error": f"Failed to fetch repo info: {response.status_code}"}), 404
-
-        tree_data = response.json()
+        api = HfApi()
+        repo_files = api.list_repo_files(
+            repo_id=model_id,
+            repo_type="model",
+            token=os.environ.get("HF_TOKEN")
+        )
 
         files = []
-
-        # Handle both array and dict responses
-        items = tree_data if isinstance(tree_data, list) else tree_data.get('children', [])
-
-        for item in items:
-            if isinstance(item, dict):
-                if item.get('type') == 'file':
-                    filename = item.get('path', '')
-                    if filename.endswith((".gguf", ".safetensors")):
-                        file_type = "gguf" if filename.endswith(".gguf") else "safetensors"
-                        size_bytes = item.get('size', 0)
-                        files.append({
-                            "filename": filename,
-                            "type": file_type,
-                            "size_bytes": size_bytes,
-                            "size_gb": round(size_bytes / (1024**3), 2) if size_bytes > 0 else 0,
-                            "model_id": model_id
-                        })
-                # Check for nested children (subdirectories)
-                if 'children' in item:
-                    for child in item['children']:
-                        if child.get('type') == 'file':
-                            filename = child.get('path', '')
-                            if filename.endswith((".gguf", ".safetensors")):
-                                file_type = "gguf" if filename.endswith(".gguf") else "safetensors"
-                                size_bytes = child.get('size', 0)
-                                files.append({
-                                    "filename": filename,
-                                    "type": file_type,
-                                    "size_bytes": size_bytes,
-                                    "size_gb": round(size_bytes / (1024**3), 2) if size_bytes > 0 else 0,
-                                    "model_id": model_id
-                                })
+        for file_path in repo_files:
+            if file_path.endswith((".gguf", ".safetensors")):
+                file_type = "gguf" if file_path.endswith(".gguf") else "safetensors"
+                files.append({
+                    "filename": file_path,
+                    "type": file_type,
+                    "size_bytes": 0,  # Optional: get via API
+                    "size_gb": 0,
+                    "model_id": model_id
+                })
 
         return jsonify({"files": files})
 
@@ -479,6 +599,12 @@ def events_stream():
             # Send current status first
             dl_info = downloads[download_id]
             yield f"data: {json.dumps({'type': 'status', 'status': dl_info['status']})}\n\n"
+
+            # Add subscriber tracking
+            with download_lock:
+                if "subscribers" not in downloads[download_id]:
+                    downloads[download_id]["subscribers"] = set()
+                downloads[download_id]["subscribers"].add(id(event_stream))
 
             # Check if event queue exists (might not after restart)
             if download_id not in download_events:
@@ -509,7 +635,12 @@ def events_stream():
                         break
 
         except GeneratorExit:
-            pass
+            # Client disconnected - cleanup
+            with download_lock:
+                if download_id in downloads and "subscribers" in downloads[download_id]:
+                    downloads[download_id]["subscribers"].discard(id(event_stream))
+            logging.info(f"SSE client disconnected for download {download_id}")
+            raise
 
     return Response(
         stream_with_context(event_stream()),
@@ -529,8 +660,17 @@ def index():
         return f.read()
 
 
+def cleanup_executor():
+    """Clean up thread pool on shutdown."""
+    download_executor.shutdown(wait=False)
+
+
+atexit.register(cleanup_executor)
+
+
 # Load queue on startup
 load_queue()
+start_periodic_save()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

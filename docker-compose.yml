@@ -16,6 +16,9 @@ services:
     environment:
       # Hugging Face authentication (optional)
       - HF_TOKEN=${HF_TOKEN:-}
+      # Concurrency settings
+      - MAX_DOWNLOAD_WORKERS=${MAX_DOWNLOAD_WORKERS:-3}
+      - QUEUE_SAVE_INTERVAL=${QUEUE_SAVE_INTERVAL:-30}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 10s

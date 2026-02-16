@@ -11,6 +11,10 @@
 # Hugging Face authentication (optional)
 HF_TOKEN="${HF_TOKEN:-}"
 
+# Concurrency settings
+MAX_DOWNLOAD_WORKERS="${MAX_DOWNLOAD_WORKERS:-3}"
+QUEUE_SAVE_INTERVAL="${QUEUE_SAVE_INTERVAL:-30}"
+
 if [ -n "$HF_TOKEN" ]; then
     echo "Info: No HF_TOKEN set - only public models accessible"
 fi
@@ -20,6 +24,8 @@ docker run -d \
   --name model-manager \
   --restart unless-stopped \
   -e HF_TOKEN="$HF_TOKEN" \
+  -e MAX_DOWNLOAD_WORKERS="$MAX_DOWNLOAD_WORKERS" \
+  -e QUEUE_SAVE_INTERVAL="$QUEUE_SAVE_INTERVAL" \
   -p 5000:5000 \
   -v /mnt/models:/models:rw \
   -v ./data:/app/data:rw \
