@@ -58,8 +58,9 @@ class ModelScanner:
             if not gguf_files:
                 continue
 
-            # Calculate total size
-            size_bytes = sum(f.stat().st_size for f in gguf_files)
+            # Full folder footprint (weights + config/tokenizer/.cache);
+            # file_count stays the count of actual model weights files.
+            size_bytes = self._get_directory_size(model_dir)
             size_gb = round(size_bytes / (1024**3), 2)
 
             models.append({
@@ -89,8 +90,9 @@ class ModelScanner:
             if not st_files:
                 continue
 
-            # Calculate total size
-            size_bytes = sum(f.stat().st_size for f in st_files)
+            # Full folder footprint (weights + config/tokenizer/.cache);
+            # file_count stays the count of actual model weights files.
+            size_bytes = self._get_directory_size(model_dir)
             size_gb = round(size_bytes / (1024**3), 2)
 
             models.append({
@@ -160,8 +162,8 @@ class ModelScanner:
         else:
             return False
 
-        # Check for path traversal attempts
-        if ".." in model_name or "/" in model_name or "\\" in model_name:
+        # Check for path traversal attempts ("." alone resolves to the type root)
+        if ".." in model_name or "/" in model_name or "\\" in model_name or model_name == ".":
             return False
 
         # Only allow alphanumeric, dash, underscore, dot
