@@ -1,9 +1,7 @@
 services:
   model-manager:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: model-manager:latest
+    image: kazimurtaza/model-manager:latest
+    pull_policy: always
     container_name: model-manager
     restart: unless-stopped
     ports:
