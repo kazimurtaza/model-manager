@@ -7,7 +7,6 @@ __pycache__/
 *.pyc
 screenshot.jpg
 README.md
-DOCKERHUB_README.md
 SPEC.md
 CLAUDE.md
 # Local env files (never bake secrets into the image); keep the template
