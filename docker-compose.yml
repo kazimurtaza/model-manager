@@ -1,0 +1,26 @@
+services:
+  model-manager:
+    image: kazimurtaza/model-manager:latest
+    pull_policy: always
+    container_name: model-manager
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Model storage: host path (ZFS dataset / local dir / NFS mount) -> container /models
+      - ${MODELS_HOST_PATH:-/mnt/models}:/models
+      # Persistent download queue
+      - ./data:/app/data
+    environment:
+      # Hugging Face authentication (optional)
+      - HF_TOKEN=${HF_TOKEN:-}
+      # Concurrency settings
+      - MAX_DOWNLOAD_WORKERS=${MAX_DOWNLOAD_WORKERS:-3}
+      - QUEUE_SAVE_INTERVAL=${QUEUE_SAVE_INTERVAL:-30}
+      - COMPLETED_AUTO_CLEAR_SECONDS=${COMPLETED_AUTO_CLEAR_SECONDS:-10}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

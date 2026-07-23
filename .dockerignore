@@ -1,0 +1,16 @@
+.venv/
+.git/
+.github/
+.claude/
+data/
+__pycache__/
+*.pyc
+screenshot.jpg
+README.md
+DOCKERHUB_README.md
+SPEC.md
+CLAUDE.md
+# Local env files (never bake secrets into the image); keep the template
+.env
+.env.*
+!.env.example

@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+            color: #FF007F;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        .card {
+            background: #000;
+            border: 2px solid #FF007F;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .section-title {
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            color: #FF007F;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #FF007F;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px 15px;
+            background: #000;
+            border: 1px solid #333;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #FF007F;
+        }
+        .btn {
+            padding: 12px 25px;
+            border: 2px solid #FF007F;
+            background: #FF007F;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.1s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn:hover {
+            background: #000;
+            color: #FF007F;
+        }
+        .btn:disabled {
+            background: #1a1a1a;
+            border-color: #1a1a1a;
+            color: #333;
+            cursor: not-allowed;
+        }
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 10px;
+        }
+        .download-item {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        .download-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .download-name {
+            font-weight: bold;
+            color: #fff;
+            font-size: 0.85rem;
+        }
+        .download-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .download-status {
+            font-size: 10px;
+            padding: 4px 8px;
+            background: #333;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .download-status.downloading {
+            background: #FF007F;
+            color: #000;
+        }
+        .download-status.completed {
+            background: #00ff00;
+            color: #000;
+        }
+        .download-status.failed {
+            background: #ff0000;
+            color: #fff;
+        }
+        .download-status.cancelled {
+            background: #ff6600;
+            color: #fff;
+        }
+        .progress-container {
+            background: #1a1a1a;
+            height: 4px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            background: #FF007F;
+            height: 100%;
+            transition: width 0.2s;
+        }
+        .progress-text {
+            font-size: 11px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .model-item {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .model-info {
+            flex: 1;
+        }
+        .model-name {
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+        }
+        .model-details {
+            font-size: 11px;
+            color: #666;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #333;
+            font-size: 0.8rem;
+        }
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            margin-bottom: 5px;
+        }
+        .file-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            margin-right: 15px;
+            accent-color: #FF007F;
+        }
+        .file-info {
+            flex: 1;
+        }
+        .file-name {
+            font-weight: 500;
+            color: #fff;
+            font-size: 0.85rem;
+            margin-bottom: 3px;
+        }
+        .file-size {
+            font-size: 11px;
+            color: #666;
+        }
+        .scan-results {
+            max-height: 350px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .scan-results::-webkit-scrollbar {
+            width: 8px;
+        }
+        .scan-results::-webkit-scrollbar-track {
+            background: #000;
+        }
+        .scan-results::-webkit-scrollbar-thumb {
+            background: #FF007F;
+        }
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>// MODEL MANAGER</h1>
+
+        <!-- Download Form -->
+        <div class="card">
+            <div class="section-title">// DOWNLOAD MODEL</div>
+            <form id="downloadForm">
+                <div class="form-group">
+                    <label>MODEL ID</label>
+                    <input type="text" id="modelId" placeholder="org/model-name" required>
+                </div>
+                <div class="form-group">
+                    <label>MODEL TYPE</label>
+                    <select id="modelType">
+                        <option value="gguf">GGUF</option>
+                        <option value="safetensors">SAFETENSORS</option>
+                    </select>
+                </div>
+                <div class="button-row">
+                    <button type="button" class="btn" onclick="scanModel()">SCAN FILES</button>
+                    <button type="submit" class="btn">DOWNLOAD ALL</button>
+                </div>
+            </form>
+
+            <div id="scanResults" class="scan-results" style="display: none;">
+                <div style="margin-bottom: 15px; color: #FF007F; font-size: 0.8rem;">// AVAILABLE FILES</div>
+                <div id="fileList"></div>
+                <button class="btn" style="margin-top: 15px;" onclick="downloadSelected()">DOWNLOAD SELECTED</button>
+            </div>
+        </div>
+
+        <!-- Active Downloads -->
+        <div class="card">
+            <div class="section-title">// ACTIVE DOWNLOADS</div>
+            <div class="button-row">
+                <button class="btn btn-small" onclick="clearDownloads()">CLEAR LIST</button>
+                <button class="btn btn-small" onclick="clearCache()">CLEAR CACHE</button>
+            </div>
+            <div id="downloadsList" style="margin-top: 20px;"></div>
+        </div>
+
+        <!-- Installed Models -->
+        <div class="card">
+            <div class="section-title">// INSTALLED MODELS</div>
+            <div id="modelsList"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        const downloadForm = document.getElementById('downloadForm');
+        const downloadsList = document.getElementById('downloadsList');
+        const modelsList = document.getElementById('modelsList');
+
+        let activeDownloads = new Map();
+        let fallbackPolling = null;
+
+        loadModels();
+        loadDownloads();
+        enableFallbackPolling();  // always-on reconciliation: covers reloads + SSE gaps
+
+        function enableFallbackPolling() {
+            if (!fallbackPolling) {
+                fallbackPolling = setInterval(() => {
+                    loadModels();
+                    loadDownloads();
+                }, 10000);  // baseline reconciliation every 10s
+            }
+        }
+
+        downloadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const modelId = document.getElementById('modelId').value.trim();
+            const modelType = document.getElementById('modelType').value;
+
+            if (!modelId) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_id: modelId, model_type: modelType })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(`ERROR: ${error.error || 'FAILED TO START DOWNLOAD'}`);
+                    return;
+                }
+
+                const data = await response.json();
+                addDownloadItem(data);
+                downloadForm.reset();
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        });
+
+        function addDownloadItem(download) {
+            activeDownloads.set(download.download_id, download);
+
+            const item = document.createElement('div');
+            item.className = 'download-item';
+            item.id = `download-${download.download_id}`;
+            item.innerHTML = `
+                <div class="download-header">
+                    <div class="download-name">${download.model_id}${download.filename ? ' / ' + download.filename : ''}</div>
+                    <div class="download-actions">
+                        <span class="download-status queued">QUEUED</span>
+                        <button class="btn btn-small" onclick="deleteDownload('${download.download_id}')">REMOVE</button>
+                        <button class="btn btn-small" onclick="cancelDownload('${download.download_id}')">CANCEL</button>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: 0%"></div>
+                </div>
+                <div class="progress-text">0%</div>
+            `;
+            downloadsList.appendChild(item);
+            startEventStream(download.download_id);
+        }
+
+        function startEventStream(downloadId) {
+            const eventSource = new EventSource(`${API_BASE}/events?download_id=${downloadId}`);
+
+            // Polling stays running as the reconciliation baseline; SSE adds live progress.
+            eventSource.addEventListener('message', (e) => {
+                const data = JSON.parse(e.data);
+
+                if (data.type === 'progress') {
+                    updateProgressBar(downloadId, data.percent);
+                } else if (data.type === 'completed') {
+                    updateDownloadStatus(downloadId, { status: 'completed' });
+                    eventSource.close();
+                    setTimeout(() => {
+                        document.getElementById(`download-${downloadId}`)?.remove();
+                        activeDownloads.delete(downloadId);
+                        loadModels();
+                    }, 2000);
+                } else if (data.type === 'error') {
+                    updateDownloadStatus(downloadId, { status: 'failed' });
+                    eventSource.close();
+                } else if (data.type === 'cancelled') {
+                    updateDownloadStatus(downloadId, { status: 'cancelled' });
+                    eventSource.close();
+                }
+            });
+
+            eventSource.addEventListener('error', () => {
+                eventSource.close();
+                enableFallbackPolling();  // Enable polling on SSE failure
+            });
+        }
+
+        function updateProgressBar(downloadId, percent) {
+            const item = document.getElementById(`download-${downloadId}`);
+            if (!item) return;
+
+            const progressBar = item.querySelector('.progress-bar');
+            const progressText = item.querySelector('.progress-text');
+
+            if (progressBar) progressBar.style.width = `${percent}%`;
+            if (progressText) progressText.textContent = `${percent}%`;
+        }
+
+        async function cancelDownload(downloadId) {
+            if (!confirm('CANCEL DOWNLOAD?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/downloads/${downloadId}/cancel`, { method: 'POST' });
+                if (!response.ok) {
+                    alert('FAILED TO CANCEL');
+                    return;
+                }
+                updateDownloadStatus(downloadId, { status: 'cancelled' });
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function retryDownload(downloadId) {
+            try {
+                const response = await fetch(`${API_BASE}/downloads/${downloadId}/retry`, {
+                    method: 'POST'
+                });
+                if (!response.ok) {
+                    alert('FAILED TO RETRY');
+                    return;
+                }
+                const data = await response.json();
+                document.getElementById(`download-${downloadId}`)?.remove();
+                activeDownloads.delete(downloadId);
+                addDownloadItem(data);
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+
+        let scannedFiles = [];
+
+        async function scanModel() {
+            const modelId = document.getElementById('modelId').value.trim();
+            if (!modelId) {
+                alert('ENTER MODEL ID');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_id: modelId })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(`ERROR: ${error.error || 'SCAN FAILED'}`);
+                    return;
+                }
+
+                const data = await response.json();
+                scannedFiles = data.files;
+                renderFileList(scannedFiles);
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+
+        function renderFileList(files) {
+            const fileList = document.getElementById('fileList');
+            const scanResults = document.getElementById('scanResults');
+
+            if (files.length === 0) {
+                fileList.innerHTML = '<div class="empty-state">// NO FILES FOUND</div>';
+                scanResults.style.display = 'none';
+                return;
+            }
+
+            scanResults.style.display = 'block';
+            fileList.innerHTML = files.map(file => `
+                <div class="file-item">
+                    <input type="checkbox" id="file-${file.filename}" value="${file.filename}">
+                    <div class="file-info">
+                        <div class="file-name">${file.filename}</div>
+                        <div class="file-size">${file.size_gb} GB</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function downloadSelected() {
+            const checkboxes = document.querySelectorAll('#fileList input[type="checkbox"]:checked');
+            if (checkboxes.length === 0) {
+                alert('SELECT FILES');
+                return;
+            }
+
+            const modelId = document.getElementById('modelId').value.trim();
+            const modelType = document.getElementById('modelType').value;
+
+            for (const checkbox of checkboxes) {
+                const filename = checkbox.value;
+                const file = scannedFiles.find(f => f.filename === filename);
+                const expectedSize = file ? file.size_bytes : 0;
+
+                try {
+                    const response = await fetch(`${API_BASE}/download`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model_id: modelId,
+                            model_type: modelType,
+                            filename: filename,
+                            expected_size: expectedSize
+                        })
+                    });
+
+                    if (!response.ok) {
+                        alert(`FAILED: ${filename}`);
+                        continue;
+                    }
+
+                    const data = await response.json();
+                    addDownloadItem(data);
+                } catch (error) {
+                    alert(`ERROR: ${error.message}`);
+                }
+            }
+
+            document.getElementById('scanResults').style.display = 'none';
+        }
+
+        async function loadDownloads() {
+            try {
+                const response = await fetch(`${API_BASE}/downloads`);
+                const data = await response.json();
+
+                const currentIds = new Set(activeDownloads.keys());
+
+                for (const download of data.downloads) {
+                    if (!currentIds.has(download.id)) {
+                        activeDownloads.set(download.id, download);
+                        renderDownloadItem(download);
+                    } else {
+                        updateDownloadStatus(download.id, download);
+                    }
+                }
+
+                for (const id of currentIds) {
+                    const stillActive = data.downloads.find(d => d.id === id);
+                    if (!stillActive) {
+                        const item = document.getElementById(`download-${id}`);
+                        if (item) item.remove();
+                        activeDownloads.delete(id);
+                    }
+                }
+            } catch (error) {
+                console.error('FAILED TO LOAD DOWNLOADS:', error);
+            }
+        }
+
+        function renderDownloadItem(download) {
+            const item = document.createElement('div');
+            item.className = 'download-item';
+            item.id = `download-${download.id}`;
+
+            const showRetry = download.status === 'failed' || download.status === 'cancelled';
+            const retryBtn = showRetry ?
+                `<button class="btn btn-small" onclick="retryDownload('${download.id}')">RETRY</button>` : '';
+
+            item.innerHTML = `
+                <div class="download-header">
+                    <div class="download-name">${download.model_id}${download.filename ? ' / ' + download.filename : ''}</div>
+                    <div class="download-actions">
+                        <span class="download-status ${download.status}">${download.status.toUpperCase()}</span>
+                        ${retryBtn}
+                        <button class="btn btn-small" onclick="deleteDownload('${download.id}')">REMOVE</button>
+                    </div>
+                </div>
+            `;
+            downloadsList.appendChild(item);
+            if (download.status === 'queued' || download.status === 'downloading') {
+                startEventStream(download.id);
+            }
+        }
+
+        function updateDownloadStatus(downloadId, download) {
+            const item = document.getElementById(`download-${downloadId}`);
+            if (!item) return;
+
+            const statusEl = item.querySelector('.download-status');
+            if (statusEl) {
+                statusEl.className = `download-status ${download.status}`;
+                statusEl.textContent = download.status.toUpperCase();
+            }
+
+            if (download.status === 'completed') {
+                setTimeout(loadModels, 2000);
+            }
+        }
+
+        async function loadModels() {
+            try {
+                const response = await fetch(`${API_BASE}/models`);
+                const data = await response.json();
+
+                if (data.models.length === 0) {
+                    modelsList.innerHTML = '<div class="empty-state">// NO MODELS</div>';
+                    return;
+                }
+
+                modelsList.innerHTML = data.models.map(model => `
+                    <div class="model-item">
+                        <div class="model-info">
+                            <div class="model-name">${model.name}</div>
+                            <div class="model-details">
+                                ${model.type.toUpperCase()} // ${model.size_gb} GB // ${model.file_count} FILE${model.file_count > 1 ? 'S' : ''}
+                            </div>
+                        </div>
+                        <button class="btn btn-small" onclick="deleteModel('${model.id}')">DELETE</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('FAILED TO LOAD MODELS:', error);
+            }
+        }
+
+        async function deleteModel(modelId) {
+            if (!confirm('DELETE MODEL?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/models/${modelId}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    alert('FAILED TO DELETE');
+                    return;
+                }
+                loadModels();
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function clearDownloads() {
+            if (!confirm('CLEAR ALL DOWNLOADS?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/downloads/clear`, { method: 'POST' });
+                if (!response.ok) {
+                    alert('FAILED');
+                    return;
+                }
+                const data = await response.json();
+                alert(`CLEARED ${data.cleared_count} DOWNLOADS`);
+                loadDownloads();
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function deleteDownload(downloadId) {
+            if (!confirm('REMOVE DOWNLOAD?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/downloads/${downloadId}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    alert('FAILED');
+                    return;
+                }
+                const item = document.getElementById(`download-${downloadId}`);
+                if (item) item.remove();
+                activeDownloads.delete(downloadId);
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+
+        async function clearCache() {
+            if (!confirm('CLEAR ALL HF CACHES?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/cache/clear`, { method: 'POST' });
+                if (!response.ok) {
+                    alert('FAILED');
+                    return;
+                }
+                const data = await response.json();
+                alert(`CLEARED ${data.count} DIRECTORIES`);
+            } catch (error) {
+                alert(`ERROR: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
