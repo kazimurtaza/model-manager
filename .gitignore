@@ -14,6 +14,10 @@ env/
 data/*.json
 *.log
 
+# Secrets / local env files (never commit)
+.env
+.env.*
+
 # IDE
 .vscode/
 .idea/
