@@ -14,9 +14,10 @@ env/
 data/*.json
 *.log
 
-# Secrets / local env files (never commit)
+# Secrets / local env files (never commit the real one; keep the example)
 .env
 .env.*
+!.env.example
 
 # IDE
 .vscode/

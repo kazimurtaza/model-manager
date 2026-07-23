@@ -29,6 +29,6 @@ docker run -d \
   -e QUEUE_SAVE_INTERVAL="$QUEUE_SAVE_INTERVAL" \
   -e COMPLETED_AUTO_CLEAR_SECONDS="$COMPLETED_AUTO_CLEAR_SECONDS" \
   -p 5000:5000 \
-  -v /mnt/models:/models:rw \
+  -v "${MODELS_HOST_PATH:-/mnt/models}":/models:rw \
   -v ./data:/app/data:rw \
   model-manager:latest
