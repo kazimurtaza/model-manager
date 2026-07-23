@@ -1,45 +1,39 @@
 # Model Manager
 
-Web service for downloading and managing Hugging Face models with NFS storage.
-
-## Features
-
-- Download models from Hugging Face Hub
-- Real-time download progress via Server-Sent Events
-- List and delete installed models
-- Automatic file size detection from Hugging Face API
-- Individual file selection for quantizations
-- Persistent download queue (survives container restarts)
+Web service for downloading and managing Hugging Face models (GGUF / SafeTensors) onto your
+own storage — local disk, ZFS dataset, or NFS mount. Flask backend + single-page UI.
 
 ## Quick Start
-
 ```bash
 docker pull kazimurtaza/model-manager:latest
 
-docker run -d \
-  --name model-manager \
-  --restart unless-stopped \
+# MODELS_HOST_PATH = host dir holding your models (ZFS / local / NFS), bind-mounted to /models
+docker run -d --name model-manager --restart unless-stopped \
   -p 5000:5000 \
-  -v /mnt/models:/models:rw \
-  -v ./data:/app/data:rw \
+  -e MODELS_HOST_PATH=/tank/models \
+  -v /tank/models:/models \
+  -v "$PWD/data":/app/data \
   kazimurtaza/model-manager:latest
 ```
+Access at http://localhost:5000
 
-Access at: http://localhost:5000
+## Highlights
+- Real, **cancellable** downloads — Cancel/Clear stop the running download and clean up partials
+- SCAN a repo to list all files with real sizes, then pick the file(s) you want
+- Server-Sent Events progress; persistent download queue (survives restarts)
+- Configurable host path (`MODELS_HOST_PATH`); per-org namespaced storage
 
 ## Environment Variables
-
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODELS_PATH` | `/models` | Path to model storage directory |
-| `DATA_PATH` | `/app/data` | Path for download queue persistence |
-| `HF_TOKEN` | - | Hugging Face authentication token (for gated models) |
+| `MODELS_HOST_PATH` | `/mnt/models` | Host dir bind-mounted to `/models` (ZFS / local / NFS) |
+| `HF_TOKEN` | _(empty)_ | Hugging Face token (gated/private repos only) |
+| `MAX_DOWNLOAD_WORKERS` | `3` | Max concurrent downloads (queue is unlimited) |
+| `COMPLETED_AUTO_CLEAR_SECONDS` | `10` | Seconds before a completed row auto-clears |
 
 ## Documentation
-
-For full documentation, API endpoints, and usage examples, visit:
+Full docs, API reference, and deployment notes (Docker LXC / Portainer):
 https://github.com/kazimurtaza/model-manager
 
 ## Category
-
 Developer Tools / Machine Learning

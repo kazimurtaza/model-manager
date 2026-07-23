@@ -214,6 +214,18 @@ This is a common pattern for a GPU box (e.g. a Tesla host) that stores models on
 > (llama.cpp / vLLM / Ollama …) that **reads** those files — a separate process/container that
 > bind-mounts the same ZFS path.
 
+## CI/CD
+
+- **Build (automated):** every push/merge to `main` runs `.github/workflows/docker-build.yml` —
+  the `test` job (pytest + pip-audit) then `build`, which builds and publishes
+  `kazimurtaza/model-manager:latest` to Docker Hub.
+- **Deploy (manual):** the Portainer stack pulls that image. Because Portainer is on a private
+  LAN, GitHub can't auto-trigger a redeploy — run the stack's webhook (from the LAN) to pull the
+  latest image and recreate the container:
+  ```bash
+  curl -k -X POST "<portainer-stack-webhook-url>"
+  ```
+
 ## Development
 ```bash
 # Run Flask in debug mode (mount your models dir)
