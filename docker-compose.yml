@@ -9,8 +9,8 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      # Model storage (NFS-mounted or local directory)
-      - /mnt/models:/models
+      # Model storage: host path (ZFS dataset / local dir / NFS mount) -> container /models
+      - ${MODELS_HOST_PATH:-/mnt/models}:/models
       # Persistent download queue
       - ./data:/app/data
     environment:
