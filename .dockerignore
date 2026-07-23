@@ -1,0 +1,11 @@
+.venv/
+.git/
+.github/
+.claude/
+data/
+__pycache__/
+*.pyc
+screenshot.jpg
+README.md
+DOCKERHUB_README.md
+SPEC.md

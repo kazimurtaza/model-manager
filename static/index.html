@@ -289,13 +289,14 @@
 
         loadModels();
         loadDownloads();
+        enableFallbackPolling();  // always-on reconciliation: covers reloads + SSE gaps
 
         function enableFallbackPolling() {
             if (!fallbackPolling) {
                 fallbackPolling = setInterval(() => {
                     loadModels();
                     loadDownloads();
-                }, 30000);  // 30 seconds as fallback
+                }, 10000);  // baseline reconciliation every 10s
             }
         }
 
@@ -338,7 +339,6 @@
                     <div class="download-name">${download.model_id}${download.filename ? ' / ' + download.filename : ''}</div>
                     <div class="download-actions">
                         <span class="download-status queued">QUEUED</span>
-                        <button class="btn btn-small" onclick="clearCache('${download.download_id}')">CACHE</button>
                         <button class="btn btn-small" onclick="deleteDownload('${download.download_id}')">REMOVE</button>
                         <button class="btn btn-small" onclick="cancelDownload('${download.download_id}')">CANCEL</button>
                     </div>
@@ -356,13 +356,9 @@
             const eventSource = new EventSource(`${API_BASE}/events?download_id=${downloadId}`);
             let sseWorking = false;
 
-            // Disable fallback polling when SSE connects
+            // Polling stays running as the reconciliation baseline; SSE adds live progress.
             eventSource.addEventListener('open', () => {
                 sseWorking = true;
-                if (fallbackPolling) {
-                    clearInterval(fallbackPolling);
-                    fallbackPolling = null;
-                }
             });
 
             eventSource.addEventListener('message', (e) => {
@@ -373,6 +369,11 @@
                 } else if (data.type === 'completed') {
                     updateDownloadStatus(downloadId, { status: 'completed' });
                     eventSource.close();
+                    setTimeout(() => {
+                        document.getElementById(`download-${downloadId}`)?.remove();
+                        activeDownloads.delete(downloadId);
+                        loadModels();
+                    }, 2000);
                 } else if (data.type === 'error') {
                     updateDownloadStatus(downloadId, { status: 'failed' });
                     eventSource.close();
@@ -570,12 +571,14 @@
                     <div class="download-actions">
                         <span class="download-status ${download.status}">${download.status.toUpperCase()}</span>
                         ${retryBtn}
-                        <button class="btn btn-small" onclick="clearCache('${download.id}')">CACHE</button>
                         <button class="btn btn-small" onclick="deleteDownload('${download.id}')">REMOVE</button>
                     </div>
                 </div>
             `;
             downloadsList.appendChild(item);
+            if (download.status === 'queued' || download.status === 'downloading') {
+                startEventStream(download.id);
+            }
         }
 
         function updateDownloadStatus(downloadId, download) {
@@ -668,24 +671,11 @@
             }
         }
 
-        async function clearCache(modelId = null) {
-            const message = modelId ? 'CLEAR MODEL CACHE?' : 'CLEAR HF CACHE?';
-            if (!confirm(message)) return;
+        async function clearCache() {
+            if (!confirm('CLEAR ALL HF CACHES?')) return;
 
             try {
-                const options = {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                };
-
-                if (modelId) {
-                    const download = activeDownloads.get(modelId);
-                    if (download) {
-                        options.body = JSON.stringify({ model_id: download.model_id });
-                    }
-                }
-
-                const response = await fetch(`${API_BASE}/cache/clear`, options);
+                const response = await fetch(`${API_BASE}/cache/clear`, { method: 'POST' });
                 if (!response.ok) {
                     alert('FAILED');
                     return;
