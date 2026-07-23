@@ -19,6 +19,9 @@ data/*.json
 .env.*
 !.env.example
 
+# Local Claude Code guide (not committed)
+CLAUDE.md
+
 # IDE
 .vscode/
 .idea/

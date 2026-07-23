@@ -165,18 +165,18 @@ load and re-opens/recovers after SSE errors.
 - **Installed models:** list with `DELETE` (full-folder size shown).
 - `CLEAR LIST` → `POST /downloads/clear`; `CLEAR CACHE` → `POST /cache/clear` (all caches).
 
-## 7. Known Bugs in current `main` (pure defects — no intent question)
+## 7. Resolved defects (fixed in the spec-conformance work)
 
-1. **Completed downloads appear to hang ~1 hour.** The worker calls
-   `progress_thread.join(timeout=3600)` *before* signaling the progress thread to stop, so
-   `status` stays `downloading` for up to 3600 s after the file is fully written.
-   (`app.py:222` vs stop signal at `app.py:229`.)
-2. **`save_queue` can corrupt `download_queue.json`.** The file write is outside any lock and
-   uses a fixed temp path shared by ~5 callers. (`app.py:73`.)
-3. **Deleting/clearing a download mid-flight** can leave the worker hitting a missing key and
-   orphan files on disk. (`app.py:472`, `app.py:529`.)
-4. **`test_periodic_save.py` tests a re-implemented copy** of `save_queue`, not the real
-   module — not a real regression guard; no test suite exercises `app.py`.
+These were bugs in the original `main`; all are fixed now:
+1. **Completed downloads used to appear to hang ~1 hour** — the worker joined the progress
+   thread *before* signaling it to stop. Fixed: signal stop before join (`app.py` worker).
+2. **`save_queue` could corrupt the queue JSON** — unlocked write to a fixed temp path. Fixed:
+   serialized under `queue_save_lock` with a unique temp file.
+3. **Deleting/clearing a download mid-flight** could raise `KeyError` and orphan files. Fixed:
+   the worker guards every `downloads[id]` access; cancel/clear/delete terminate the subprocess
+   first.
+4. **No real test suite** — the old `test_periodic_save.py` re-implemented `save_queue` (it
+   tested a copy). Fixed: removed it; `test_app.py` is a real pytest suite over the actual module.
 
 ## 8. Feature Decisions (confirmed in walkthrough)
 
